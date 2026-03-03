@@ -33,29 +33,58 @@ export const getTaiwanStockInfo = async (ticker) => {
         }
 
         // 2. 嘗試取得即時/近期股價
-        // 方法 A: FinMind API (免註冊，但興櫃等部分股票可能沒有最近日資料)
+        // 改用 Yahoo Finance API 搭配 allorigins proxy 來解決 CORS 與資料延遲問題
         let currentPrice = null;
 
-        try {
-            const d = new Date();
-            d.setDate(d.getDate() - 10); // 拉長到 10 天，確保能抓到最近的交易日
-            const dateStr = d.toISOString().split('T')[0];
-            const priceUrl = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockPrice&data_id=${ticker}&start_date=${dateStr}`;
+        // 建立 fetch Yahoo API 的 helper function，加入簡單重試機制
+        const fetchYahooPrice = async (symbolSuffix, retries = 2) => {
+            const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}${symbolSuffix}?interval=1d&range=1d`;
+            const proxyUrl = `https://api.allorigins.win/raw?url=${encodeURIComponent(yahooUrl)}`;
 
-            const priceRes = await fetch(priceUrl);
-            if (priceRes.ok) {
-                const priceData = await priceRes.json();
-                if (priceData.data && priceData.data.length > 0) {
-                    const latestRecord = priceData.data[priceData.data.length - 1];
-                    currentPrice = latestRecord.close;
+            for (let i = 0; i <= retries; i++) {
+                try {
+                    const res = await fetch(proxyUrl);
+                    if (!res.ok) {
+                        if (res.status >= 500 && i < retries) {
+                            // Proxy 偶發 500/520 錯誤，等待半秒後重試
+                            await new Promise(r => setTimeout(r, 500));
+                            continue;
+                        }
+                        throw new Error(`HTTP error! status: ${res.status}`);
+                    }
+                    const data = await res.json();
+
+                    if (data.chart?.error) {
+                        throw new Error(data.chart.error.description || 'Not found');
+                    }
+
+                    if (data.chart?.result?.[0]?.meta) {
+                        return data.chart.result[0].meta.regularMarketPrice;
+                    }
+                    throw new Error('Invalid data format');
+                } catch (error) {
+                    if (i === retries || error.message.includes('Not found') || error.message.includes('No data found')) {
+                        throw error;
+                    }
+                    // 其他網路錯誤重試
+                    await new Promise(r => setTimeout(r, 500));
                 }
             }
-        } catch (e) {
-            console.warn("FinMind price fetch failed", e);
+        };
+
+        try {
+            // 先嘗試當作上市股票 (.TW)
+            currentPrice = await fetchYahooPrice('.TW');
+        } catch (e1) {
+            console.log(`[${ticker}] 上市查詢失敗，嘗試上櫃查詢...`, e1.message);
+            try {
+                // 若失敗，嘗試當作上櫃股票 (.TWO)
+                currentPrice = await fetchYahooPrice('.TWO');
+            } catch (e2) {
+                console.warn(`[${ticker}] 上櫃查詢也失敗:`, e2.message);
+            }
         }
 
-        // 若方法 A 失敗（例如某些興櫃股票），前端網頁環境受限於 CORS 真的很難完美支援所有外站 API
-        // 為了不再跳出紅色錯誤，這裡改為：如果真的抓不到，就不覆寫價格，讓這筆回傳 "需要手動更新"
         if (currentPrice === null) {
             throw new Error(`公開 API 查無代碼 ${ticker} 的近期交易資料，可能為興櫃或暫無報價`);
         }
