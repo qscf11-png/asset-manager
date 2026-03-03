@@ -485,8 +485,18 @@ export default function Dashboard({ user }) {
                         if (a.ticker) existingMap[a.ticker] = a;
                     });
 
-                    let created = 0, updated = 0;
+                    let created = 0, updated = 0, deleted = 0;
 
+                    // 1. 找出並刪除不在 Excel 清單中的現有台股
+                    const importedSymbols = new Set(stocks.map(s => s.symbol));
+                    for (const existingAsset of existingStocks) {
+                        if (!importedSymbols.has(existingAsset.ticker)) {
+                            await deleteAsset(existingAsset.id);
+                            deleted++;
+                        }
+                    }
+
+                    // 2. 新增或更新 Excel 清單中的台股
                     for (const stock of stocks) {
                         if (existingMap[stock.symbol]) {
                             // 更新現有
@@ -515,7 +525,7 @@ export default function Dashboard({ user }) {
 
                     await fetchAssets();
                     setShowStockImportModal(false);
-                    alert(`台股 Excel 匯入完成！\n新增 ${created} 筆，更新 ${updated} 筆\n\n請點擊「全部更新」抓取最新股價。`);
+                    alert(`台股 Excel 覆寫匯入完成！\n新增 ${created} 筆，更新 ${updated} 筆\n刪除 ${deleted} 筆不在報表中的舊持股\n\n請點擊「全部更新」抓取最新股價。`);
                 } catch (err) {
                     alert('Excel 檔案解析失敗：' + err.message);
                 } finally {
