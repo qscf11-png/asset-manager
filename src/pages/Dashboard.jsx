@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { TrendingUp, Plus, DollarSign, Briefcase, Bitcoin, Building, X, Trash2, Activity, Wallet, RefreshCw, Edit2, ChevronDown, ChevronRight, Save } from 'lucide-react';
-import { getUserAssets, addAsset, deleteAsset, updateAsset, getNetWorthHistory, recordNetWorth } from '../config/db';
+import { TrendingUp, Plus, DollarSign, Briefcase, Bitcoin, Building, X, Trash2, Activity, Wallet, RefreshCw, Edit2, ChevronDown, ChevronRight, Save, Shield, Landmark, Gem, Home, Download, Upload, Calendar } from 'lucide-react';
+import { getUserAssets, addAsset, deleteAsset, updateAsset, getNetWorthHistory, recordNetWorth, addManualNetWorthRecord, exportAllData, importAllData } from '../config/db';
 import { getTaiwanStockInfo } from '../utils/stockApi';
 import { calculateTWDValue } from '../utils/exchangeApi';
 
@@ -11,7 +11,12 @@ const ASSET_TYPES = [
     { value: '台股', label: '台股投資 (自動抓價)', icon: Briefcase, color: '#10b981', isLiability: false },
     { value: '美股', label: '美股投資', icon: Briefcase, color: '#10b981', isLiability: false },
     { value: '加密貨幣', label: '加密貨幣', icon: Bitcoin, color: '#f59e0b', isLiability: false },
+    { value: '保險', label: '保險 (投資型保單/儲蓄險)', icon: Shield, color: '#06b6d4', isLiability: false },
+    { value: '基金信託', label: '基金及信託', icon: TrendingUp, color: '#6366f1', isLiability: false },
+    { value: '退休金', label: '勞退/其他退休金帳戶', icon: Landmark, color: '#14b8a6', isLiability: false },
     { value: '其他', label: '房地產/其他', icon: Building, color: '#8b5cf6', isLiability: false },
+    { value: '奢侈品', label: '奢侈品/其他消費品', icon: Gem, color: '#ec4899', isLiability: false },
+    { value: '房貸', label: '房屋貸款', icon: Home, color: '#f97316', isLiability: true },
     { value: '負債', label: '貸款/信用卡/負債', icon: Building, color: '#ef4444', isLiability: true },
 ];
 
@@ -42,8 +47,8 @@ const CustomTooltip = ({ active, payload, label }) => {
                         {Object.entries(data.details).map(([groupName, value]) => (
                             <div key={groupName} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.2rem 0', color: 'var(--text-secondary)' }}>
                                 <span>{groupName}</span>
-                                <span style={{ color: groupName.includes('負債') ? 'var(--danger-color)' : 'var(--text-primary)' }}>
-                                    {groupName.includes('負債') ? '-' : ''} NT$ {Math.round(value).toLocaleString()}
+                                <span style={{ color: (groupName.includes('負債') || groupName.includes('貸款')) ? 'var(--danger-color)' : 'var(--text-primary)' }}>
+                                    {(groupName.includes('負債') || groupName.includes('貸款')) ? '-' : ''} NT$ {Math.round(value).toLocaleString()}
                                 </span>
                             </div>
                         ))}
@@ -69,6 +74,16 @@ export default function Dashboard({ user }) {
     const [fetchingExchange, setFetchingExchange] = useState(false);
     const [savingRecord, setSavingRecord] = useState(false);
     const [expandedGroups, setExpandedGroups] = useState({});
+
+    // 手動補充歷史紀錄狀態
+    const [showManualRecordForm, setShowManualRecordForm] = useState(false);
+    const [manualDate, setManualDate] = useState('');
+    const [manualNetWorth, setManualNetWorth] = useState('');
+    const [savingManualRecord, setSavingManualRecord] = useState(false);
+
+    // 匯出匯入狀態
+    const [exporting, setExporting] = useState(false);
+    const [importing, setImporting] = useState(false);
 
     // 編輯模式狀態
     const [editingAssetId, setEditingAssetId] = useState(null);
@@ -192,6 +207,83 @@ export default function Dashboard({ user }) {
 
     const toggleGroup = (groupName) => {
         setExpandedGroups(prev => ({ ...prev, [groupName]: prev[groupName] === false ? true : false }));
+    };
+
+    // 手動補充歷史紀錄
+    const handleManualRecord = async () => {
+        if (!manualDate || !manualNetWorth) {
+            alert('請輸入日期和淨值金額');
+            return;
+        }
+        try {
+            setSavingManualRecord(true);
+            await addManualNetWorthRecord(user.uid, manualDate, Number(manualNetWorth));
+            const newHistory = await getNetWorthHistory(user.uid);
+            setHistoryData(newHistory.map(h => ({ ...h, name: h.date })));
+            setManualDate('');
+            setManualNetWorth('');
+            setShowManualRecordForm(false);
+            alert('歷史紀錄已成功補充！');
+        } catch (error) {
+            alert('補充紀錄失敗：' + error.message);
+        } finally {
+            setSavingManualRecord(false);
+        }
+    };
+
+    // 匯出所有資料
+    const handleExport = async () => {
+        try {
+            setExporting(true);
+            const data = await exportAllData(user.uid);
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `asset-manager-backup-${new Date().toISOString().split('T')[0]}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            alert('匯出失敗：' + error.message);
+        } finally {
+            setExporting(false);
+        }
+    };
+
+    // 匯入資料
+    const handleImport = async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        try {
+            setImporting(true);
+            const text = await file.text();
+            const data = JSON.parse(text);
+
+            if (!data.assets && !data.netWorthHistory) {
+                alert('無效的備份檔案格式');
+                return;
+            }
+
+            const confirmMsg = `即將匯入：\n` +
+                `• ${data.assets?.length || 0} 筆資產紀錄\n` +
+                `• ${data.netWorthHistory?.length || 0} 筆淨值歷史\n\n` +
+                `（現有資料不會被刪除，同日期淨值歷史將被覆寫）\n\n確定要匯入嗎？`;
+
+            if (!window.confirm(confirmMsg)) return;
+
+            const result = await importAllData(user.uid, data);
+            await fetchAllData();
+            alert(`匯入完成！\n已匯入 ${result.importedAssets} 筆資產、${result.importedHistory} 筆歷史紀錄。`);
+        } catch (error) {
+            alert('匯入失敗：' + error.message);
+        } finally {
+            setImporting(false);
+            // 清除 input 以便重複選擇同檔案
+            event.target.value = '';
+        }
     };
 
     const handleCreateAsset = async (e) => {
@@ -459,12 +551,57 @@ export default function Dashboard({ user }) {
 
             {/* 淨值趨勢圖 */}
             <div className="card glass-panel" style={{ gridColumn: '1 / -1' }}>
-                <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div className="card-title" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
                     <span>淨值歷史趨勢 (Net Worth History)</span>
-                    <button onClick={handleRecordNetWorth} disabled={savingRecord} className="action-btn" style={{ fontSize: '0.85rem', padding: '0.4rem 0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                        <Save size={16} /> {savingRecord ? '紀錄中...' : '紀錄今日數值'}
-                    </button>
+                    <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+                        <button onClick={() => setShowManualRecordForm(!showManualRecordForm)} className="action-btn" style={{ fontSize: '0.85rem', padding: '0.4rem 0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <Calendar size={16} /> {showManualRecordForm ? '收起' : '補充歷史紀錄'}
+                        </button>
+                        <button onClick={handleRecordNetWorth} disabled={savingRecord} className="action-btn" style={{ fontSize: '0.85rem', padding: '0.4rem 0.8rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                            <Save size={16} /> {savingRecord ? '紀錄中...' : '紀錄今日數值'}
+                        </button>
+                    </div>
                 </div>
+
+                {/* 手動補充歷史紀錄表單 */}
+                {showManualRecordForm && (
+                    <div style={{ marginTop: '1rem', padding: '1rem', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                        <div style={{ fontSize: '0.9rem', color: 'var(--text-secondary)', marginBottom: '0.75rem' }}>
+                            📝 手動補充過去的淨值紀錄（同一日期會覆寫）
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                            <div style={{ flex: 1, minWidth: '150px' }}>
+                                <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>日期</label>
+                                <input
+                                    type="date"
+                                    value={manualDate}
+                                    onChange={(e) => setManualDate(e.target.value)}
+                                    max={new Date().toISOString().split('T')[0]}
+                                    style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'white', fontFamily: 'inherit' }}
+                                />
+                            </div>
+                            <div style={{ flex: 1, minWidth: '150px' }}>
+                                <label style={{ display: 'block', marginBottom: '0.3rem', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>總淨值 (NT$)</label>
+                                <input
+                                    type="number"
+                                    value={manualNetWorth}
+                                    onChange={(e) => setManualNetWorth(e.target.value)}
+                                    placeholder="輸入當時的總淨值..."
+                                    style={{ width: '100%', padding: '0.6rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'white', fontFamily: 'inherit' }}
+                                />
+                            </div>
+                            <button
+                                onClick={handleManualRecord}
+                                disabled={savingManualRecord || !manualDate || !manualNetWorth}
+                                className="action-btn primary"
+                                style={{ padding: '0.6rem 1.2rem', fontSize: '0.85rem', whiteSpace: 'nowrap' }}
+                            >
+                                {savingManualRecord ? '儲存中...' : '確認補充'}
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 <div style={{ height: '260px', width: '100%', marginTop: '1.5rem' }}>
                     {historyData.length > 0 ? (
                         <ResponsiveContainer width="100%" height="100%">
@@ -492,7 +629,24 @@ export default function Dashboard({ user }) {
 
             {/* 資產列表 */}
             <div className="card glass-panel">
-                <div className="card-title" style={{ marginBottom: '1.5rem' }}>各項資產明細</div>
+                <div className="card-title" style={{ marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <span>各項資產明細</span>
+                    <div style={{ display: 'flex', gap: '0.5rem' }}>
+                        <button onClick={handleExport} disabled={exporting} className="action-btn" style={{ fontSize: '0.8rem', padding: '0.35rem 0.7rem', display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+                            <Download size={14} /> {exporting ? '匯出中...' : '匯出備份'}
+                        </button>
+                        <label className="action-btn" style={{ fontSize: '0.8rem', padding: '0.35rem 0.7rem', display: 'flex', alignItems: 'center', gap: '0.3rem', cursor: importing ? 'wait' : 'pointer', opacity: importing ? 0.6 : 1 }}>
+                            <Upload size={14} /> {importing ? '匯入中...' : '匯入資料'}
+                            <input
+                                type="file"
+                                accept=".json"
+                                onChange={handleImport}
+                                disabled={importing}
+                                style={{ display: 'none' }}
+                            />
+                        </label>
+                    </div>
+                </div>
 
                 {assets.length === 0 ? (
                     <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-secondary)', backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: '12px' }}>
@@ -734,7 +888,7 @@ export default function Dashboard({ user }) {
 
                             <div>
                                 <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
-                                    {formData.type === '負債' ? '負債餘額 (NT$)' : (formData.type === '台股' ? '目前總市值 (NT$)' : '現在市值 (約當 NT$)')}
+                                    {(formData.type === '負債' || formData.type === '房貸') ? '負債餘額 (NT$)' : (formData.type === '台股' ? '目前總市值 (NT$)' : '現在市值 (約當 NT$)')}
                                 </label>
                                 <input
                                     type="number"
@@ -743,7 +897,7 @@ export default function Dashboard({ user }) {
                                     value={formData.value}
                                     onChange={(e) => setFormData({ ...formData, value: e.target.value })}
                                     style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', color: 'white', fontFamily: 'inherit' }}
-                                    placeholder={formData.type === '負債' ? "輸入剩餘貸款或卡債金額..." : "輸入目前的台幣總價值..."}
+                                    placeholder={(formData.type === '負債' || formData.type === '房貸') ? "輸入剩餘貸款或卡債金額..." : "輸入目前的台幣總價值..."}
                                 />
                             </div>
 
