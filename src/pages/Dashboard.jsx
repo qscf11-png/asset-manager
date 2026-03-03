@@ -667,7 +667,7 @@ export default function Dashboard({ user }) {
                     <div className="card-title">資產配置</div>
                     <div style={{ height: '280px', width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                         {allocationData.length > 0 ? (
-                            <ResponsiveContainer width="100%" height="100%">
+                            <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                                 <PieChart>
                                     <Pie
                                         data={allocationData}
@@ -755,7 +755,7 @@ export default function Dashboard({ user }) {
 
                 <div style={{ height: '260px', width: '100%', marginTop: '1.5rem' }}>
                     {historyData.length > 0 ? (
-                        <ResponsiveContainer width="100%" height="100%">
+                        <ResponsiveContainer width="100%" height="100%" minWidth={1} minHeight={1}>
                             <AreaChart data={historyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                                 <defs>
                                     <linearGradient id="colorValue" x1="0" y1="0" x2="0" y2="1">
@@ -1113,36 +1113,33 @@ export default function Dashboard({ user }) {
                         </div>
 
                         <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem', padding: '0.75rem', backgroundColor: 'rgba(16, 185, 129, 0.08)', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
-                            📝 請貼上以 <strong>Tab</strong> 或<strong>逗號</strong>分隔的台股持股資料，格式如下：<br />
-                            <code style={{ fontSize: '0.8rem', color: '#10b981' }}>Symbol  Name  Shares  AvgCost</code><br />
-                            • 已存在的股票代號會自動更新股數與成本<br />
-                            • 新的代號會自動新增，匯入後請點「全部更新」抓股價
+                            📝 請點擊「選擇檔案」上傳先前匯出的 Excel (.xlsx) 檔案。<br />
+                            • 系統會自動為您新增或更新現有台股的股數與成本<br />
+                            • 匯入完成後請點擊「全部更新」重新獲取最新股價
                         </div>
 
-                        <textarea
-                            value={stockImportText}
-                            onChange={(e) => setStockImportText(e.target.value)}
-                            placeholder={`Symbol\tName\tShares\tAvgCost\n2330\t\t100\t801\n2382\t\t1100\t276.68\n2408\t\t500\t178.5`}
-                            rows={12}
-                            style={{
-                                width: '100%', padding: '0.75rem', borderRadius: '8px',
-                                border: '1px solid var(--border-color)', background: 'var(--bg-secondary)',
-                                color: 'white', fontFamily: 'monospace', fontSize: '0.85rem',
-                                resize: 'vertical', lineHeight: '1.5'
-                            }}
-                        />
+                        <div style={{ marginBottom: '1.5rem', textAlign: 'center', border: '2px dashed var(--border-color)', borderRadius: '8px', padding: '2rem' }}>
+                            <input
+                                type="file"
+                                accept=".xlsx, .xls"
+                                onChange={handleStockImportSubmit}
+                                disabled={stockImporting}
+                                style={{ display: 'none' }}
+                                id="excel-upload"
+                            />
+                            <label
+                                htmlFor="excel-upload"
+                                className="action-btn primary"
+                                style={{ cursor: stockImporting ? 'wait' : 'pointer', padding: '0.8rem 1.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
+                            >
+                                <Upload size={18} />
+                                {stockImporting ? '讀取與匯入中...' : '選擇 Excel 檔案上傳'}
+                            </label>
+                        </div>
 
                         <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
                             <button type="button" className="action-btn" onClick={() => setShowStockImportModal(false)} style={{ flex: 1, backgroundColor: 'transparent', border: '1px solid var(--border-color)' }}>
                                 取消
-                            </button>
-                            <button
-                                className="action-btn primary"
-                                onClick={handleStockImportSubmit}
-                                disabled={stockImporting || !stockImportText.trim()}
-                                style={{ flex: 1 }}
-                            >
-                                {stockImporting ? '匯入中...' : `確認匯入`}
                             </button>
                         </div>
                     </div>
