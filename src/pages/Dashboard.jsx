@@ -4,6 +4,7 @@ import { TrendingUp, Plus, DollarSign, Briefcase, Bitcoin, Building, X, Trash2, 
 import { getUserAssets, addAsset, deleteAsset, updateAsset, getNetWorthHistory, recordNetWorth, addManualNetWorthRecord, exportAllData, importAllData } from '../config/db';
 import { getTaiwanStockInfo } from '../utils/stockApi';
 import { calculateTWDValue } from '../utils/exchangeApi';
+import * as XLSX from 'xlsx';
 
 const ASSET_TYPES = [
     { value: '現金', label: '現金與銀行存款', icon: DollarSign, color: '#3b82f6', isLiability: false },
@@ -85,9 +86,8 @@ export default function Dashboard({ user }) {
     const [exporting, setExporting] = useState(false);
     const [importing, setImporting] = useState(false);
 
-    // 台股專用匯入匯出
+    // 台股專用匯入狀態
     const [showStockImportModal, setShowStockImportModal] = useState(false);
-    const [stockImportText, setStockImportText] = useState('');
     const [stockImporting, setStockImporting] = useState(false);
 
     // 編輯模式狀態
@@ -427,103 +427,108 @@ export default function Dashboard({ user }) {
         }
     };
 
-    // 台股匯出 CSV
+    // 台股匯出 Excel
     const handleStockExport = (group) => {
-        const header = 'Symbol\tName\tShares\tAvgCost';
-        const rows = group.items.map(asset => {
-            return `${asset.ticker || ''}\t${asset.name || ''}\t${asset.shares || ''}\t${asset.avgCost || ''}`;
-        });
-        const csv = [header, ...rows].join('\n');
-        const blob = new Blob([csv], { type: 'text/tab-separated-values;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `台股持股明細-${new Date().toISOString().split('T')[0]}.tsv`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
+        const dataForExcel = group.items.map(asset => ({
+            'Symbol (代號)': asset.ticker || '',
+            'Name (名稱)': asset.name || '',
+            'Shares (股數)': asset.shares || 0,
+            'AvgCost (成本)': asset.avgCost || 0
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(dataForExcel);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "台股持股明細");
+
+        const fileName = `台股持股明細-${new Date().toISOString().split('T')[0]}.xlsx`;
+        XLSX.writeFile(wb, fileName);
     };
 
-    // 台股匯入：解析貼上的 CSV/TSV 資料
-    const handleStockImportSubmit = async () => {
-        if (!stockImportText.trim()) {
-            alert('請貼上台股持股資料');
-            return;
-        }
+    // 台股匯入：解析 Excel 資料
+    const handleStockImportSubmit = async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
 
         try {
             setStockImporting(true);
-            const lines = stockImportText.trim().split('\n');
-            const stocks = [];
 
-            for (const line of lines) {
-                const trimmed = line.trim();
-                if (!trimmed) continue;
-                // 跳過標題行
-                if (trimmed.toLowerCase().startsWith('symbol') || trimmed.startsWith('股票代號')) continue;
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet);
 
-                // 支援 tab 或逗號分隔
-                const parts = trimmed.includes('\t') ? trimmed.split('\t') : trimmed.split(',');
-                if (parts.length < 3) continue;
+                    const stocks = [];
+                    for (const row of jsonData) {
+                        // 支援幾種常見的名稱組合
+                        const symbol = row['Symbol (代號)'] || row['Symbol'] || row['代號'];
+                        const name = row['Name (名稱)'] || row['Name'] || row['名稱'] || '';
+                        const shares = parseInt(row['Shares (股數)'] || row['Shares'] || row['股數'], 10);
+                        const avgCost = parseFloat(row['AvgCost (成本)'] || row['AvgCost'] || row['成本']) || 0;
 
-                const symbol = parts[0].trim();
-                const name = parts[1]?.trim() || '';
-                const shares = parseInt(parts[2]?.trim(), 10);
-                const avgCost = parseFloat(parts[3]?.trim()) || 0;
+                        if (!symbol || isNaN(shares) || shares <= 0) continue;
+                        stocks.push({ symbol: symbol.toString(), name, shares, avgCost });
+                    }
 
-                if (!symbol || isNaN(shares) || shares <= 0) continue;
-                stocks.push({ symbol, name, shares, avgCost });
-            }
+                    if (stocks.length === 0) {
+                        alert('未解析到有效的股票資料，請確認報表格式或下載匯出範本修改。');
+                        return;
+                    }
 
-            if (stocks.length === 0) {
-                alert('未解析到有效的股票資料，請確認格式是\nSymbol  Name  Shares  AvgCost');
-                return;
-            }
-
-            // 找出現有台股資產，用 ticker 對應
-            const existingStocks = assets.filter(a => a.type === '台股');
-            const existingMap = {};
-            existingStocks.forEach(a => {
-                if (a.ticker) existingMap[a.ticker] = a;
-            });
-
-            let created = 0, updated = 0;
-
-            for (const stock of stocks) {
-                if (existingMap[stock.symbol]) {
-                    // 更新現有
-                    const existing = existingMap[stock.symbol];
-                    await updateAsset(existing.id, {
-                        shares: stock.shares,
-                        avgCost: stock.avgCost,
-                        name: stock.name || existing.name,
+                    // 找出現有台股資產，用 ticker 對應
+                    const existingStocks = assets.filter(a => a.type === '台股');
+                    const existingMap = {};
+                    existingStocks.forEach(a => {
+                        if (a.ticker) existingMap[a.ticker] = a;
                     });
-                    updated++;
-                } else {
-                    // 新增
-                    await addAsset({
-                        userId: user.uid,
-                        name: stock.name || `台股 ${stock.symbol}`,
-                        type: '台股',
-                        value: 0,
-                        currency: 'TWD',
-                        ticker: stock.symbol,
-                        shares: stock.shares,
-                        avgCost: stock.avgCost,
-                    });
-                    created++;
+
+                    let created = 0, updated = 0;
+
+                    for (const stock of stocks) {
+                        if (existingMap[stock.symbol]) {
+                            // 更新現有
+                            const existing = existingMap[stock.symbol];
+                            await updateAsset(existing.id, {
+                                shares: stock.shares,
+                                avgCost: stock.avgCost,
+                                name: stock.name || existing.name,
+                            });
+                            updated++;
+                        } else {
+                            // 新增
+                            await addAsset({
+                                userId: user.uid,
+                                name: stock.name || `台股 ${stock.symbol}`,
+                                type: '台股',
+                                value: 0,
+                                currency: 'TWD',
+                                ticker: stock.symbol,
+                                shares: stock.shares,
+                                avgCost: stock.avgCost,
+                            });
+                            created++;
+                        }
+                    }
+
+                    await fetchAssets();
+                    setShowStockImportModal(false);
+                    alert(`台股 Excel 匯入完成！\n新增 ${created} 筆，更新 ${updated} 筆\n\n請點擊「全部更新」抓取最新股價。`);
+                } catch (err) {
+                    alert('Excel 檔案解析失敗：' + err.message);
+                } finally {
+                    setStockImporting(false);
+                    event.target.value = ''; // 允許重複上傳相同檔案
                 }
-            }
+            };
+            reader.readAsArrayBuffer(file);
 
-            await fetchAssets();
-            setShowStockImportModal(false);
-            setStockImportText('');
-            alert(`台股匯入完成！\n新增 ${created} 筆，更新 ${updated} 筆\n\n請點擊「全部更新」抓取最新股價。`);
         } catch (error) {
             alert('匯入失敗：' + error.message);
-        } finally {
             setStockImporting(false);
+            event.target.value = '';
         }
     };
 
