@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend } from 'recharts';
-import { TrendingUp, Plus, DollarSign, Briefcase, Bitcoin, Building, X, Trash2, Activity, Wallet, RefreshCw, Edit2, ChevronDown, ChevronRight, Save, Shield, Landmark, Gem, Home, Download, Upload, Calendar } from 'lucide-react';
+import { TrendingUp, Plus, DollarSign, Briefcase, Bitcoin, Building, X, Trash2, Activity, Wallet, RefreshCw, Edit2, ChevronDown, ChevronRight, Save, Shield, Landmark, Gem, Home, Download, Upload, Calendar, FileSpreadsheet } from 'lucide-react';
 import { getUserAssets, addAsset, deleteAsset, updateAsset, getNetWorthHistory, recordNetWorth, addManualNetWorthRecord, exportAllData, importAllData } from '../config/db';
 import { getTaiwanStockInfo } from '../utils/stockApi';
 import { calculateTWDValue } from '../utils/exchangeApi';
@@ -84,6 +84,11 @@ export default function Dashboard({ user }) {
     // 匯出匯入狀態
     const [exporting, setExporting] = useState(false);
     const [importing, setImporting] = useState(false);
+
+    // 台股專用匯入匯出
+    const [showStockImportModal, setShowStockImportModal] = useState(false);
+    const [stockImportText, setStockImportText] = useState('');
+    const [stockImporting, setStockImporting] = useState(false);
 
     // 編輯模式狀態
     const [editingAssetId, setEditingAssetId] = useState(null);
@@ -422,6 +427,106 @@ export default function Dashboard({ user }) {
         }
     };
 
+    // 台股匯出 CSV
+    const handleStockExport = (group) => {
+        const header = 'Symbol\tName\tShares\tAvgCost';
+        const rows = group.items.map(asset => {
+            return `${asset.ticker || ''}\t${asset.name || ''}\t${asset.shares || ''}\t${asset.avgCost || ''}`;
+        });
+        const csv = [header, ...rows].join('\n');
+        const blob = new Blob([csv], { type: 'text/tab-separated-values;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `台股持股明細-${new Date().toISOString().split('T')[0]}.tsv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    };
+
+    // 台股匯入：解析貼上的 CSV/TSV 資料
+    const handleStockImportSubmit = async () => {
+        if (!stockImportText.trim()) {
+            alert('請貼上台股持股資料');
+            return;
+        }
+
+        try {
+            setStockImporting(true);
+            const lines = stockImportText.trim().split('\n');
+            const stocks = [];
+
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                // 跳過標題行
+                if (trimmed.toLowerCase().startsWith('symbol') || trimmed.startsWith('股票代號')) continue;
+
+                // 支援 tab 或逗號分隔
+                const parts = trimmed.includes('\t') ? trimmed.split('\t') : trimmed.split(',');
+                if (parts.length < 3) continue;
+
+                const symbol = parts[0].trim();
+                const name = parts[1]?.trim() || '';
+                const shares = parseInt(parts[2]?.trim(), 10);
+                const avgCost = parseFloat(parts[3]?.trim()) || 0;
+
+                if (!symbol || isNaN(shares) || shares <= 0) continue;
+                stocks.push({ symbol, name, shares, avgCost });
+            }
+
+            if (stocks.length === 0) {
+                alert('未解析到有效的股票資料，請確認格式是\nSymbol  Name  Shares  AvgCost');
+                return;
+            }
+
+            // 找出現有台股資產，用 ticker 對應
+            const existingStocks = assets.filter(a => a.type === '台股');
+            const existingMap = {};
+            existingStocks.forEach(a => {
+                if (a.ticker) existingMap[a.ticker] = a;
+            });
+
+            let created = 0, updated = 0;
+
+            for (const stock of stocks) {
+                if (existingMap[stock.symbol]) {
+                    // 更新現有
+                    const existing = existingMap[stock.symbol];
+                    await updateAsset(existing.id, {
+                        shares: stock.shares,
+                        avgCost: stock.avgCost,
+                        name: stock.name || existing.name,
+                    });
+                    updated++;
+                } else {
+                    // 新增
+                    await addAsset({
+                        userId: user.uid,
+                        name: stock.name || `台股 ${stock.symbol}`,
+                        type: '台股',
+                        value: 0,
+                        currency: 'TWD',
+                        ticker: stock.symbol,
+                        shares: stock.shares,
+                        avgCost: stock.avgCost,
+                    });
+                    created++;
+                }
+            }
+
+            await fetchAssets();
+            setShowStockImportModal(false);
+            setStockImportText('');
+            alert(`台股匯入完成！\n新增 ${created} 筆，更新 ${updated} 筆\n\n請點擊「全部更新」抓取最新股價。`);
+        } catch (error) {
+            alert('匯入失敗：' + error.message);
+        } finally {
+            setStockImporting(false);
+        }
+    };
+
     const handleFetchStockPrice = async () => {
         if (!formData.ticker) {
             alert("請先輸入台股代號");
@@ -736,6 +841,24 @@ export default function Dashboard({ user }) {
                                                     {refreshingGroupType === group.info.value ? '更新中...' : '全部更新'}
                                                 </button>
                                             )}
+                                            {group.info.value === '台股' && (
+                                                <>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); handleStockExport(group); }}
+                                                        style={{ padding: '0.4rem 0.6rem', color: group.info.color, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', transition: '0.2s' }}
+                                                        title="匯出台股持股明細"
+                                                    >
+                                                        <Download size={14} /> 匯出
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setShowStockImportModal(true); }}
+                                                        style={{ padding: '0.4rem 0.6rem', color: group.info.color, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', transition: '0.2s' }}
+                                                        title="匯入台股持股資料"
+                                                    >
+                                                        <Upload size={14} /> 匯入
+                                                    </button>
+                                                </>
+                                            )}
                                             {isExpanded ? <ChevronDown size={20} color="var(--text-secondary)" /> : <ChevronRight size={20} color="var(--text-secondary)" />}
                                         </div>
                                     </div>
@@ -962,6 +1085,61 @@ export default function Dashboard({ user }) {
                                 </button>
                             </div>
                         </form>
+                    </div>
+                </div>
+            )}
+
+            {/* 台股匯入 Modal */}
+            {showStockImportModal && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    backgroundColor: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 50, padding: '1rem'
+                }}>
+                    <div className="glass-panel" style={{ width: '100%', maxWidth: '550px', padding: '2rem', animation: 'slideUp 0.3s ease-out' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+                            <h2 style={{ fontSize: '1.25rem', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                <FileSpreadsheet size={22} color="#10b981" /> 台股持股匯入
+                            </h2>
+                            <button onClick={() => setShowStockImportModal(false)} style={{ color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer' }}>
+                                <X size={24} />
+                            </button>
+                        </div>
+
+                        <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem', padding: '0.75rem', backgroundColor: 'rgba(16, 185, 129, 0.08)', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.2)' }}>
+                            📝 請貼上以 <strong>Tab</strong> 或<strong>逗號</strong>分隔的台股持股資料，格式如下：<br />
+                            <code style={{ fontSize: '0.8rem', color: '#10b981' }}>Symbol  Name  Shares  AvgCost</code><br />
+                            • 已存在的股票代號會自動更新股數與成本<br />
+                            • 新的代號會自動新增，匯入後請點「全部更新」抓股價
+                        </div>
+
+                        <textarea
+                            value={stockImportText}
+                            onChange={(e) => setStockImportText(e.target.value)}
+                            placeholder={`Symbol\tName\tShares\tAvgCost\n2330\t\t100\t801\n2382\t\t1100\t276.68\n2408\t\t500\t178.5`}
+                            rows={12}
+                            style={{
+                                width: '100%', padding: '0.75rem', borderRadius: '8px',
+                                border: '1px solid var(--border-color)', background: 'var(--bg-secondary)',
+                                color: 'white', fontFamily: 'monospace', fontSize: '0.85rem',
+                                resize: 'vertical', lineHeight: '1.5'
+                            }}
+                        />
+
+                        <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+                            <button type="button" className="action-btn" onClick={() => setShowStockImportModal(false)} style={{ flex: 1, backgroundColor: 'transparent', border: '1px solid var(--border-color)' }}>
+                                取消
+                            </button>
+                            <button
+                                className="action-btn primary"
+                                onClick={handleStockImportSubmit}
+                                disabled={stockImporting || !stockImportText.trim()}
+                                style={{ flex: 1 }}
+                            >
+                                {stockImporting ? '匯入中...' : `確認匯入`}
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
