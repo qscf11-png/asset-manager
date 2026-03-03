@@ -88,6 +88,7 @@ export default function Dashboard({ user }) {
     // 編輯模式狀態
     const [editingAssetId, setEditingAssetId] = useState(null);
     const [refreshingId, setRefreshingId] = useState(null);
+    const [refreshingGroupType, setRefreshingGroupType] = useState(null);
 
     // 表單狀態
     const [formData, setFormData] = useState({
@@ -378,6 +379,46 @@ export default function Dashboard({ user }) {
             alert(`更新 ${asset.name} 股價失敗: ${error.message}`);
         } finally {
             setRefreshingId(null);
+        }
+    };
+
+    // 一鍵更新某群組內所有項目（台股或外幣）
+    const handleBatchRefreshGroup = async (group) => {
+        const type = group.info.value;
+        try {
+            setRefreshingGroupType(type);
+            let updatedCount = 0;
+            let failedItems = [];
+
+            for (const asset of group.items) {
+                try {
+                    if (type === '台股' && asset.ticker && asset.shares) {
+                        const info = await getTaiwanStockInfo(asset.ticker);
+                        const newValue = Math.round(Number(asset.shares) * info.price);
+                        await updateAsset(asset.id, {
+                            value: newValue,
+                            name: (info.name && info.name !== `台股 ${asset.ticker}`) ? info.name : asset.name
+                        });
+                        updatedCount++;
+                    } else if (type === '外幣' && asset.foreignAmount && asset.currency) {
+                        const twdValue = await calculateTWDValue(asset.currency, asset.foreignAmount);
+                        if (twdValue > 0) {
+                            await updateAsset(asset.id, { value: twdValue });
+                            updatedCount++;
+                        }
+                    }
+                } catch (err) {
+                    failedItems.push(asset.name);
+                }
+            }
+
+            await fetchAssets();
+            const msg = `已更新 ${updatedCount} 筆${failedItems.length > 0 ? `\n失敗: ${failedItems.join(', ')}` : ''}`;
+            alert(msg);
+        } catch (error) {
+            alert(`批次更新失敗: ${error.message}`);
+        } finally {
+            setRefreshingGroupType(null);
         }
     };
 
@@ -684,6 +725,17 @@ export default function Dashboard({ user }) {
                                                     佔比: {allocationPercentage}
                                                 </div>
                                             </div>
+                                            {(group.info.value === '台股' || group.info.value === '外幣') && (
+                                                <button
+                                                    onClick={(e) => { e.stopPropagation(); handleBatchRefreshGroup(group); }}
+                                                    disabled={refreshingGroupType === group.info.value}
+                                                    style={{ padding: '0.4rem 0.6rem', color: group.info.color, background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '8px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem', transition: '0.2s' }}
+                                                    title={`一鍵更新全部${group.info.value === '台股' ? '股價' : '匯率'}`}
+                                                >
+                                                    <RefreshCw size={14} style={{ animation: refreshingGroupType === group.info.value ? 'spin 1s linear infinite' : 'none' }} />
+                                                    {refreshingGroupType === group.info.value ? '更新中...' : '全部更新'}
+                                                </button>
+                                            )}
                                             {isExpanded ? <ChevronDown size={20} color="var(--text-secondary)" /> : <ChevronRight size={20} color="var(--text-secondary)" />}
                                         </div>
                                     </div>
