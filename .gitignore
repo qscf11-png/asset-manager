@@ -22,3 +22,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# 本地工具設定（Claude Code preview 等）
+.claude/
+
+# 使用者匯出的備份檔（含個人財務資料，不可上傳）
+匯出/
+asset-manager-backup-*.json
