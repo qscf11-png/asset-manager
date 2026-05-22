@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { LayoutDashboard, Wallet, LogOut, Activity } from 'lucide-react';
+import { LogOut, Activity } from 'lucide-react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth } from './config/firebase';
 import Dashboard from './pages/Dashboard';
@@ -11,7 +11,6 @@ function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // 監聽 Firebase 登入狀態變更
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
@@ -31,15 +30,14 @@ function App() {
   if (loading) {
     return (
       <div className="app-container" style={{ alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem', color: 'var(--text-secondary)' }}>
-          <Activity className="text-success" size={48} style={{ animation: 'pulse 2s infinite' }} />
-          <p>載入中...</p>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+          <Activity className="text-success" size={40} style={{ animation: 'pulse 2s infinite', filter: 'drop-shadow(0 0 12px rgba(16,185,129,0.4))' }} />
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', letterSpacing: '0.05em' }}>載入中...</p>
         </div>
       </div>
     );
   }
 
-  // 如果未登入，強制導向登入頁面
   if (!user) {
     return (
       <Routes>
@@ -50,27 +48,27 @@ function App() {
 
   return (
     <div className="app-container">
-      <header className="main-header glass-panel" style={{ borderRadius: 0, borderTop: 'none', borderLeft: 'none', borderRight: 'none' }}>
+      <header className="main-header" style={{ borderRadius: 0 }}>
         <div className="brand">
-          <Activity className="text-success" size={28} />
-          <span>Asset Manager</span>
+          <Activity className="text-success" size={22} />
+          <span className="text-gradient">Asset Manager</span>
         </div>
-        <nav style={{ display: 'flex', gap: '1.5rem', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', marginRight: '1rem' }}>
+        <nav style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
             {user.photoURL && (
               <img
                 src={user.photoURL}
-                alt="User Avatar"
-                style={{ width: '32px', height: '32px', borderRadius: '50%', border: '2px solid var(--border-color)' }}
+                alt=""
+                style={{ width: '28px', height: '28px', borderRadius: '50%', border: '2px solid rgba(255,255,255,0.1)' }}
               />
             )}
-            <span style={{ fontSize: '0.9rem', color: 'var(--text-secondary)' }}>
+            <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 500, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {user.displayName || user.email}
             </span>
           </div>
 
-          <button className="action-btn" onClick={handleLogout} style={{ padding: '0.5rem 1rem', fontSize: '0.9rem' }}>
-            <LogOut size={16} /> 登出
+          <button className="refresh-btn" onClick={handleLogout} style={{ fontSize: '0.82rem' }}>
+            <LogOut size={14} /> 登出
           </button>
         </nav>
       </header>
