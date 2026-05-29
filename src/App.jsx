@@ -62,7 +62,7 @@ function App() {
                 style={{ width: '28px', height: '28px', borderRadius: '50%', border: '2px solid rgba(255,255,255,0.1)' }}
               />
             )}
-            <span style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 500, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span className="user-name-desktop" style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', fontWeight: 500, maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {user.displayName || user.email}
             </span>
           </div>

@@ -2,16 +2,20 @@
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
-/* ── Header ── */
+/* ── Header (適配 iPhone 瀏海/動態島) ── */
 .main-header {
-  padding: 1rem 2rem;
+  padding: 1rem 1.25rem;
+  padding-top: calc(0.75rem + env(safe-area-inset-top));
+  padding-left: calc(1.25rem + env(safe-area-inset-left));
+  padding-right: calc(1.25rem + env(safe-area-inset-right));
   display: flex;
   justify-content: space-between;
   align-items: center;
   border-bottom: 1px solid var(--border-color);
-  background: rgba(8, 13, 26, 0.85);
+  background: rgba(8, 13, 26, 0.88);
   backdrop-filter: blur(24px) saturate(1.3);
   -webkit-backdrop-filter: blur(24px) saturate(1.3);
   position: sticky;
@@ -35,7 +39,10 @@
 
 .main-content {
   flex: 1;
-  padding: 2rem;
+  padding: 1.5rem 2rem;
+  padding-bottom: calc(2rem + env(safe-area-inset-bottom));
+  padding-left: calc(2rem + env(safe-area-inset-left));
+  padding-right: calc(2rem + env(safe-area-inset-right));
   max-width: 1280px;
   width: 100%;
   margin: 0 auto;
@@ -224,15 +231,25 @@
 /* ── Form Inputs ── */
 .form-input {
   width: 100%;
-  padding: 0.7rem 0.9rem;
+  padding: 0.8rem 0.95rem;
   border-radius: 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   background: rgba(15, 23, 42, 0.6);
   color: white;
   font-family: inherit;
-  font-size: 0.9rem;
+  /* iOS 強制 16px 以上避免 focus 時自動縮放 */
+  font-size: 16px;
   transition: all var(--transition-normal);
   outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+@media (min-width: 768px) {
+  .form-input {
+    padding: 0.7rem 0.9rem;
+    font-size: 0.9rem;
+  }
 }
 
 .form-input:focus {
@@ -264,18 +281,52 @@
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   justify-content: center;
   z-index: 50;
-  padding: 1rem;
   animation: fadeIn 0.2s ease-out;
 }
 
 .modal-content {
   width: 100%;
   max-width: 480px;
-  padding: 2rem;
-  animation: slideUp 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  padding: 1.5rem 1.25rem;
+  padding-bottom: calc(1.5rem + env(safe-area-inset-bottom));
+  border-radius: 24px 24px 0 0;
+  animation: slideUpSheet 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  max-height: 92vh;
+  max-height: 92dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  position: relative;
+}
+
+/* 模擬 iOS 底部彈出視窗的小拖把 */
+.modal-content::before {
+  content: '';
+  display: block;
+  width: 36px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+  margin: -0.5rem auto 1rem;
+}
+
+/* 桌面版改回置中彈出 */
+@media (min-width: 768px) {
+  .modal-overlay {
+    align-items: center;
+    padding: 1rem;
+  }
+  .modal-content {
+    border-radius: 20px;
+    padding: 2rem;
+    max-height: 88vh;
+    animation: slideUp 0.35s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .modal-content::before {
+    display: none;
+  }
 }
 
 /* ── Group Header ── */
@@ -389,6 +440,11 @@
   to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
+@keyframes slideUpSheet {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
 @keyframes spin {
   from { transform: rotate(0deg); }
   to { transform: rotate(360deg); }
@@ -409,33 +465,109 @@
   50% { box-shadow: 0 0 30px rgba(59, 130, 246, 0.2); }
 }
 
+/* ── Floating Action Button (手機新增資產用) ── */
+.fab {
+  position: fixed;
+  right: calc(1.25rem + env(safe-area-inset-right));
+  bottom: calc(1.5rem + env(safe-area-inset-bottom));
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  cursor: pointer;
+  box-shadow:
+    0 8px 24px rgba(59, 130, 246, 0.4),
+    0 4px 12px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.15);
+  z-index: 30;
+  transition: all var(--transition-normal);
+  animation: fabPop 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.fab:active {
+  transform: scale(0.92);
+}
+
+@keyframes fabPop {
+  from { opacity: 0; transform: scale(0.5) translateY(20px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* 桌面版隱藏 FAB（用卡片內的按鈕即可） */
+@media (min-width: 768px) {
+  .fab {
+    display: none;
+  }
+}
+
 /* ── Responsive ── */
-@media (max-width: 640px) {
+@media (max-width: 767px) {
   .main-header {
-    padding: 0.75rem 1rem;
-    flex-wrap: wrap;
-    gap: 0.5rem;
+    padding: 0.6rem 1rem;
+    padding-top: calc(0.5rem + env(safe-area-inset-top));
   }
 
   .main-content {
     padding: 1rem;
+    padding-bottom: calc(6rem + env(safe-area-inset-bottom));
+    padding-left: calc(1rem + env(safe-area-inset-left));
+    padding-right: calc(1rem + env(safe-area-inset-right));
   }
 
   .brand {
-    font-size: 1.15rem;
+    font-size: 1.1rem;
   }
 
   .net-worth-value {
-    font-size: 2.2rem;
+    font-size: 2.4rem;
   }
 
   .card {
     padding: 1.25rem;
   }
 
+  .card.glass-panel {
+    border-radius: 18px;
+  }
+
+  /* 手機版資產項目 — 數字與操作按鈕分開兩列 */
   .asset-item {
-    flex-direction: column;
-    align-items: flex-start;
+    padding: 0.8rem 0.85rem;
+  }
+
+  .asset-name {
+    font-size: 0.9rem;
+  }
+
+  .asset-value {
+    font-size: 0.95rem;
+  }
+
+  /* 觸控目標放大到 44pt (iOS HIG) */
+  .icon-btn {
+    padding: 0.55rem;
+    min-width: 38px;
+    min-height: 38px;
+  }
+
+  .refresh-btn {
+    min-height: 36px;
+    padding: 0.45rem 0.75rem;
+  }
+
+  /* 手機版隱藏 header 的使用者名稱（保留頭像） */
+  .user-name-desktop {
+    display: none;
+  }
+
+  /* Group header 改為換行排版避免擠 */
+  .group-header {
+    flex-wrap: wrap;
     gap: 0.5rem;
   }
 }

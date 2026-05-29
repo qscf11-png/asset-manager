@@ -29,3 +29,8 @@ dist-ssr
 # 使用者匯出的備份檔（含個人財務資料，不可上傳）
 匯出/
 asset-manager-backup-*.json
+
+# 與本專案無關的目錄/檔案
+000_Agent/
+100_Inbox/
+transcribe_*.txt

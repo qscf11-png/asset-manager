@@ -1091,6 +1091,19 @@ export default function Dashboard({ user }) {
                     </div>
                 </div>
             )}
+
+            {/* Floating Action Button (手機新增資產) */}
+            <button
+                className="fab"
+                aria-label="新增資產"
+                onClick={() => {
+                    setEditingAssetId(null);
+                    setFormData({ name: '', type: '現金', value: '', currency: 'USD', foreignAmount: '', ticker: '', shares: '' });
+                    setShowAddModal(true);
+                }}
+            >
+                <Plus size={28} strokeWidth={2.5} />
+            </button>
         </div>
     );
 }
