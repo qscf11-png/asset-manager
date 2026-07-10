@@ -3,6 +3,8 @@
   flex-direction: column;
   min-height: 100vh;
   min-height: 100dvh;
+  position: relative;
+  z-index: 1;
 }
 
 /* ── Header (適配 iPhone 瀏海/動態島) ── */

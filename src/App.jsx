@@ -5,6 +5,7 @@ import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { auth } from './config/firebase';
 import Dashboard from './pages/Dashboard';
 import Login from './pages/Login';
+import WarpBackground from './components/WarpBackground';
 import './App.css';
 
 function App() {
@@ -29,26 +30,34 @@ function App() {
 
   if (loading) {
     return (
-      <div className="app-container" style={{ alignItems: 'center', justifyContent: 'center' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
-          <Activity className="text-success" size={40} style={{ animation: 'pulse 2s infinite', filter: 'drop-shadow(0 0 12px rgba(16,185,129,0.4))' }} />
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', letterSpacing: '0.05em' }}>載入中...</p>
+      <>
+        <WarpBackground />
+        <div className="app-container" style={{ alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+            <Activity className="text-success" size={40} style={{ animation: 'pulse 2s infinite', filter: 'drop-shadow(0 0 12px rgba(16,185,129,0.4))' }} />
+            <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', letterSpacing: '0.05em' }}>載入中...</p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   if (!user) {
     return (
-      <Routes>
-        <Route path="*" element={<Login />} />
-      </Routes>
+      <>
+        <WarpBackground />
+        <Routes>
+          <Route path="*" element={<Login />} />
+        </Routes>
+      </>
     );
   }
 
   return (
-    <div className="app-container">
-      <header className="main-header" style={{ borderRadius: 0 }}>
+    <>
+      <WarpBackground />
+      <div className="app-container">
+        <header className="main-header" style={{ borderRadius: 0 }}>
         <div className="brand">
           <Activity className="text-success" size={22} />
           <span className="text-gradient">Asset Manager</span>
@@ -79,7 +88,8 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
-    </div>
+      </div>
+    </>
   );
 }
 

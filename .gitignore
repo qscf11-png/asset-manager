@@ -34,3 +34,12 @@ asset-manager-backup-*.json
 000_Agent/
 100_Inbox/
 transcribe_*.txt
+ChronoPDF_Overview.pptx
+skills-lock.json
+
+# 本地敏感設定（API key、管理密碼），絕不進版本庫
+data_local/
+
+# 工作坊影片處理暫存（字幕轉錄、配音工作檔）
+_frames/
+.agents/
