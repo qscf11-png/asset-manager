@@ -49,17 +49,39 @@ const isMarketOpen = () => {
 };
 
 // === 股票清單（判斷市場別用） ===
+// 版本號：改動 getStockMeta 或 FinMind 清單解讀邏輯時 bump，
+// 讓使用者端的舊 localStorage 快取自動失效重抓
+const STOCK_LIST_VERSION = '2';
+
 const ensureStockList = async () => {
     try {
-        if (localStorage.getItem('tw_stock_info')) return;
+        const version = localStorage.getItem('tw_stock_info_version');
+        if (localStorage.getItem('tw_stock_info') && version === STOCK_LIST_VERSION) return;
         const res = await fetch(`${FINMIND_URL}?dataset=TaiwanStockInfo`, {
             signal: AbortSignal.timeout(15000)
         });
         const data = await res.json();
-        if (data.data) localStorage.setItem('tw_stock_info', JSON.stringify(data.data));
+        if (data.data) {
+            localStorage.setItem('tw_stock_info', JSON.stringify(data.data));
+            localStorage.setItem('tw_stock_info_version', STOCK_LIST_VERSION);
+        }
     } catch (e) {
         console.warn('取得股票清單失敗:', e);
     }
+};
+
+// FinMind TaiwanStockInfo 的 type 值對照（實測結果）：
+//   twse / 上市    → 上市（走 TWSE MIS 的 tse_）
+//   tpex / 上櫃 / OTC / otc → 上櫃（走 TWSE MIS 的 otc_）
+//   emerging / 興櫃 → 興櫃（MIS 不支援；只能走 FinMind T-1 日線）
+const OTC_TYPES = new Set(['上櫃', 'OTC', 'otc', 'tpex']);
+const EMERGING_TYPES = new Set(['emerging', '興櫃']);
+// 優先序：若同一支股票有多筆（例如從興櫃轉上櫃，舊紀錄還在），優先取已轉上櫃的 tpex
+const MARKET_PRIORITY = (type) => {
+    if (OTC_TYPES.has(type)) return 0;      // tpex 最優先（表示股票已轉上櫃）
+    if (type === 'twse' || type === '上市') return 1;
+    if (EMERGING_TYPES.has(type)) return 2;  // 興櫃最後，資料常是舊的
+    return 99;
 };
 
 const getStockMeta = (ticker) => {
@@ -67,13 +89,14 @@ const getStockMeta = (ticker) => {
         const raw = localStorage.getItem('tw_stock_info');
         if (!raw) return { name: null, market: 'tse' };
         const list = JSON.parse(raw);
-        const s = list.find(x => x.stock_id === ticker);
-        if (!s) return { name: null, market: 'tse' };
-        const otcTypes = new Set(['上櫃', 'OTC', 'otc']);
-        return {
-            name: s.stock_name,
-            market: otcTypes.has(s.type) ? 'otc' : 'tse',
-        };
+        const matches = list.filter(x => x.stock_id === ticker);
+        if (matches.length === 0) return { name: null, market: 'tse' };
+        matches.sort((a, b) => MARKET_PRIORITY(a.type) - MARKET_PRIORITY(b.type));
+        const s = matches[0];
+        let market = 'tse';
+        if (OTC_TYPES.has(s.type)) market = 'otc';
+        else if (EMERGING_TYPES.has(s.type)) market = 'emerging';
+        return { name: s.stock_name, market };
     } catch {
         return { name: null, market: 'tse' };
     }
@@ -84,11 +107,12 @@ const fetchMISRealtime = async (tickers) => {
     const results = new Map();
     if (tickers.length === 0) return results;
 
+    // 興櫃 MIS 不支援；過濾掉以免浪費請求
+    const misTickers = tickers.filter(t => getStockMeta(t).market !== 'emerging');
+    if (misTickers.length === 0) return results;
+
     // 依市場別組 ex_ch 字串，TWSE MIS 支援一次多檔用 | 分隔
-    const exChList = tickers.map(t => {
-        const { market } = getStockMeta(t);
-        return `${market}_${t}.tw`;
-    });
+    const exChList = misTickers.map(t => `${getStockMeta(t).market}_${t}.tw`);
 
     // 一次最多 ~50 檔避免 URL 過長
     const BATCH = 50;
