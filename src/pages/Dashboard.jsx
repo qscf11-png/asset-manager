@@ -185,6 +185,21 @@ export default function Dashboard({ user }) {
             groups[groupName].totalValue += Number(asset.value || 0);
         });
 
+        // 每個群組內項目依 ticker 數字由小到大排序
+        //   - 兩者皆有 ticker：以字串自然數字比較（可正確處理 00679B 這種帶字母後綴）
+        //   - 只有一邊有 ticker：有 ticker 的排前面
+        //   - 兩者皆無 ticker（如現金、保險）：以名稱 (繁中) 排序
+        Object.values(groups).forEach(group => {
+            group.items.sort((a, b) => {
+                if (a.ticker && b.ticker) {
+                    return a.ticker.localeCompare(b.ticker, 'en', { numeric: true });
+                }
+                if (a.ticker) return -1;
+                if (b.ticker) return 1;
+                return (a.name || '').localeCompare(b.name || '', 'zh-Hant');
+            });
+        });
+
         return Object.values(groups).sort((a, b) => {
             return ASSET_TYPES.findIndex(t => t.label === a.info.label) - ASSET_TYPES.findIndex(t => t.label === b.info.label);
         });
